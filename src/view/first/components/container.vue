@@ -1,19 +1,22 @@
 <template>
-  <div id='container' @drop='dropInContainer' @dragover='allowDrop'>
-    <svg ref='paper'></svg>
+  <div>
+    <div ref="container" id='container' @drop='dropInContainer' @dragover='allowDrop'>
+      <svg ref='paper'></svg>
+    </div>
+    <nodeModal ref="nodeModal"></nodeModal>
   </div>
 </template>
 <script>
 import * as d3 from 'd3'
-const nodes = [{
-  x: 150,
-  y: 100
-}, {
-  x: 220,
-  y: 100
-}]
+import nodeModal from './modal/nodeModal.vue'
+
+const nodes = []
+const links = []
 
 export default {
+  components: {
+    nodeModal
+  },
   name: 'container',
   data () {
     return {
@@ -34,7 +37,9 @@ export default {
         y: 0
       },
       // 节点计数器
-      nodeCount: 0
+      nodeCount: 0,
+      // 当前被操作的节点
+      currentNode: {}
     }
   },
   computed: {
@@ -54,7 +59,7 @@ export default {
   methods: {
     init () {
       const vm = this
-      vm.container = vm.$el
+      vm.container = vm.$refs.container
       const height = vm.container.clientHeight
       const width = vm.container.clientWidth
       vm.svg = d3.select(vm.$refs.paper)
@@ -63,86 +68,120 @@ export default {
         .attr('width', width)
         .attr('height', height)
         .style('cursor', 'move')
-      // const data = [{
-      //   letter: 20,
-      //   frequency: '天'
-      // }]
-      // // 设置x轴
-      // let x = d3.scaleBand().rangeRound([0, width]).padding(0.1).domain(data.map(d => d.letter))
-      // // 设置y轴
-      // let y = d3.scaleLinear().rangeRound([height, 0]).domain([0, d3.max(data, d => d.frequency)])
+        .on('mousemove', node => {
+          vm.moveP = vm.getXY(window.event)
+          if (vm.moving) {
+            const node = vm.currentNode
+            console.log(node)
+            const rect = vm.svg.select(`.node_${node.id}`)
+            rect.attr('transform', `translate(${node.x + vm.offsetP.x}, ${node.y + vm.offsetP.y})`)
+          }
+        })
+      vm.addNode({
+        x: 150,
+        y: 100,
+        id: '11'
+      })
+      vm.addNode({
+        x: 300,
+        y: 80,
+        id: '12'
+      })
+      vm.addLink({
+        target: '12',
+        source: '11'
+      })
+      vm.refreshCanvas()
+    },
+    refreshCanvas () {
+      const vm = this
+      const allNodes = vm.svg.selectAll('.node')
+      // 获取update部分
+      const update = allNodes.data(nodes)
+      // 获取enter部分
+      const enter = update.enter()
+      // 获取exit部分
+      const exit = update.exit()
+      // update部分的处理：更新属性值
+      update.attr('transform', n => {
+        return `translate(${n.x}, ${n.y})`
+      })
 
-      // // 设最外包层在总图上的相对位置
-      // let g = vm.svg.append('g').attr('transform', 'translate(20, 20)')
-      // g.append('g') // 设置x轴
-      //   .attr('class', 'axis axis--x')
-      //   .attr('transform', 'translate(0,' + height + ')')
-      //   .call(d3.axisBottom(x))
+      // enter部分的处理：添加元素后赋予属性值
+      vm.drawEnterNode(enter)
 
-      // g.append('g')// 设置y轴
-      //   .attr('class', 'axis axis--y')
-      //   .call(d3.axisLeft(y).ticks(10, '%'))
-      //   .append('text')
-      //   .attr('y', -16)
-      //   .attr('dy', '.71em')
-      //   .style('text-anchor', 'middle')
-      //   .style('fill', '#fff')
-      //   .text('空置率 (%)')
+      // 删除的节点
+      exit.remove()
 
-      // console.log(x)
-      // console.log(y)
-
-      // d3.select('body').style('background-color', 'black')
-      // const p = d3.select(this.$el)
-      //   .selectAll('p')
-      //   .data([4, 8, 15, 16, 23, 42])
-      //   .text(d => d)
-      // p.enter().append('p')
-      //   .text(d => d)
-      // p.exit().remove()
-      vm.drawLine()
-      nodes.map(n => {
-        vm.drawNode(n)
+      // nodes.map(n => {
+      //   vm.drawNode(n)
+      // })
+      links.map(l => {
+        vm.drawLine(l)
       })
     },
+    // 增加关系连线
+    addLink (link) {
+      links.push(link)
+    },
     // 画线
-    drawLine () {
+    drawLine (link) {
       const vm = this
+      const target = nodes.find(item => item.id === link.target)
+      const source = nodes.find(item => item.id === link.source)
+      const sourcePoint = {
+        x: source.x + 75,
+        y: source.y + 25
+      }
+      const targetPoint = {
+        x: target.x - 25,
+        y: target.y + 25
+      }
       let g = vm.svg.append('g').attr('transform', 'translate(0, 0)')
       g.append('g')
         .append('path')
         .attr('class', 'link')
-        .attr('d', 'M 100 100 L 200 200')
+        .attr('d', `M ${sourcePoint.x} ${sourcePoint.y} L ${targetPoint.x} ${targetPoint.y}`)
+        .on('click', () => {
+          vm.$refs.nodeModal.open()
+        })
     },
-    // 画节点
-    drawNode (node) {
+    // 增加节点
+    addNode (node) {
+      if (!node.id) {
+        node.id = this.nodeCount
+      }
+      nodes.push(node)
+      this.nodeCount++
+    },
+    // 画新增的节点
+    drawEnterNode (enter) {
       const vm = this
-      let g = vm.svg.append('g').attr('transform', 'translate(0, 0)')
-      const count = vm.nodeCount
-      g.append('rect')
-        .attr('class', `rect1 node_${count}`)
-        .attr('x', node.x)
-        .attr('y', node.y)
-        .attr('width', '100')
-        .attr('height', '100')
+      enter.append('g')
+        .attr('transform', node => `translate(${node.x}, ${node.y})`)
+        .attr('class', node => `node node_${node.id}`)
+        .attr('id', node => node.id)
+        .attr('x', '0')
+        .attr('y', '0')
+        .attr('width', '50')
+        .attr('height', '50')
+        .append('rect')
+        .attr('width', '50')
+        .attr('height', '50')
+        .attr('x', '-25')
+        .attr('y', '-25')
         .on('click', () => {
           console.log('click')
+          // vm.$refs.nodeModal.open()
         })
-        .on('mousedown', (e = window.event) => {
-          vm.startP = vm.getXY(e)
+        .on('mousedown', node => {
+          vm.startP = vm.getXY(window.event)
           vm.moving = true
+          vm.currentNode = node
         })
-        .on('mousemove', (e = window.event) => {
-          vm.moveP = vm.getXY(e)
-          if (vm.moving) {
-            const rect = vm.svg.select(`.node_${count}`)
-            rect.attr('x', node.x + vm.offsetP.x)
-          }
-        })
-        .on('mouseup', e => {
+        .on('mouseup', node => {
           vm.moveEnd(node)
         })
-      vm.nodeCount++
     },
     moveEnd (node) {
       const vm = this
@@ -197,11 +236,12 @@ export default {
 
 <style lang="less">
 path.link{
-  stroke-width: 1.5;
+  stroke-width: 2;
   fill: none;
   stroke: #000;
+  cursor: pointer;
 }
-rect.rect1{
+.node rect{
   fill: rgba(0, 105, 237, 0.6);
 }
 </style>
