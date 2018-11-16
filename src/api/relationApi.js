@@ -11,6 +11,22 @@ const apiList = {
       url: '/api/RDBMS_to_Neo4j',
       method: 'post'
     }, data || {})
+  },
+  select (data) {
+    return api({
+      url: '/api/select',
+      method: 'post'
+    }, {
+      KeyID: '',
+      find_all_node: '',
+      find_all_relationship: '',
+      find_node: {},
+      find_single_relationship: {},
+      find_muti_relationship: {},
+      find_all_node_labels: '',
+      find_single_label_properties: '',
+      ...data
+    })
   }
 }
 const relationApiList = { ...apiList }

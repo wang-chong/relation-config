@@ -36,6 +36,8 @@ export default {
         x: 0,
         y: 0
       },
+      // 被操作节点的初始坐标
+      originP: {},
       // 节点计数器
       nodeCount: 0,
       // 当前被操作的节点
@@ -52,31 +54,9 @@ export default {
     }
   },
   mounted () {
-    this.$nextTick(() => {
-      this.init()
-    })
-  },
-  methods: {
-    init () {
-      const vm = this
-      vm.container = vm.$refs.container
-      const height = vm.container.clientHeight
-      const width = vm.container.clientWidth
-      vm.svg = d3.select(vm.$refs.paper)
-        // .attr('width', vm.container.offsetWidth)
-        // .attr('height', vm.container.offsetHeight)
-        .attr('width', width)
-        .attr('height', height)
-        .style('cursor', 'move')
-        .on('mousemove', node => {
-          vm.moveP = vm.getXY(window.event)
-          if (vm.moving) {
-            const node = vm.currentNode
-            console.log(node)
-            const rect = vm.svg.select(`.node_${node.id}`)
-            rect.attr('transform', `translate(${node.x + vm.offsetP.x}, ${node.y + vm.offsetP.y})`)
-          }
-        })
+    const vm = this
+    vm.$nextTick(() => {
+      vm.init()
       vm.addNode({
         x: 150,
         y: 100,
@@ -91,6 +71,27 @@ export default {
         target: '12',
         source: '11'
       })
+    })
+  },
+  methods: {
+    init () {
+      const vm = this
+      vm.container = vm.$refs.container
+      const height = vm.container.clientHeight
+      const width = vm.container.clientWidth
+      vm.svg = d3.select(vm.$refs.paper)
+        .attr('width', width)
+        .attr('height', height)
+        .style('cursor', 'move')
+        .on('mousemove', node => {
+          vm.moveP = vm.getXY(window.event)
+          if (vm.moving) {
+            const node = vm.currentNode
+            node.x = vm.originP.x + vm.offsetP.x
+            node.y = vm.originP.y + vm.offsetP.y
+            vm.refreshCanvas()
+          }
+        })
       vm.refreshCanvas()
     },
     refreshCanvas () {
@@ -106,45 +107,59 @@ export default {
       update.attr('transform', n => {
         return `translate(${n.x}, ${n.y})`
       })
-
       // enter部分的处理：添加元素后赋予属性值
       vm.drawEnterNode(enter)
-
       // 删除的节点
       exit.remove()
 
-      // nodes.map(n => {
-      //   vm.drawNode(n)
-      // })
-      links.map(l => {
-        vm.drawLine(l)
+      const allLines = vm.svg.selectAll('.link')
+      // 获取update部分
+      const updateLine = allLines.data(links)
+      // 获取enter部分
+      const enterLine = updateLine.enter()
+      // 获取exit部分
+      const exitLine = updateLine.exit()
+      // update部分的处理：更新属性值
+      updateLine.attr('d', l => {
+        const { sourcePoint, targetPoint } = vm.getLinkPoint(l)
+        return `M ${sourcePoint.x} ${sourcePoint.y} L ${targetPoint.x} ${targetPoint.y}`
       })
+      // enter部分的处理：添加元素后赋予属性值
+      vm.drawEnterLine(enterLine)
+      // 删除的线条
+      exitLine.remove()
+    },
+    // 画线
+    drawEnterLine (enter) {
+      const vm = this
+      enter.append('path')
+        .attr('class', 'link')
+        .attr('d', l => {
+          const { sourcePoint, targetPoint } = vm.getLinkPoint(l)
+          return `M ${sourcePoint.x} ${sourcePoint.y} L ${targetPoint.x} ${targetPoint.y}`
+        })
+        .on('click', () => {
+          vm.$refs.nodeModal.open()
+        })
+    },
+    // 根据线的id获取起点和终点的坐标
+    getLinkPoint (link) {
+      const target = nodes.find(item => item.id === link.target)
+      const source = nodes.find(item => item.id === link.source)
+      const sourcePoint = {
+        x: source.x < target.x ? source.x + 25 : source.x - 25,
+        y: source.y
+      }
+      const targetPoint = {
+        x: source.x < target.x ? target.x - 25 : target.x + 25,
+        y: target.y
+      }
+      return { sourcePoint, targetPoint }
     },
     // 增加关系连线
     addLink (link) {
       links.push(link)
-    },
-    // 画线
-    drawLine (link) {
-      const vm = this
-      const target = nodes.find(item => item.id === link.target)
-      const source = nodes.find(item => item.id === link.source)
-      const sourcePoint = {
-        x: source.x + 75,
-        y: source.y + 25
-      }
-      const targetPoint = {
-        x: target.x - 25,
-        y: target.y + 25
-      }
-      let g = vm.svg.append('g').attr('transform', 'translate(0, 0)')
-      g.append('g')
-        .append('path')
-        .attr('class', 'link')
-        .attr('d', `M ${sourcePoint.x} ${sourcePoint.y} L ${targetPoint.x} ${targetPoint.y}`)
-        .on('click', () => {
-          vm.$refs.nodeModal.open()
-        })
+      this.refreshCanvas()
     },
     // 增加节点
     addNode (node) {
@@ -153,6 +168,7 @@ export default {
       }
       nodes.push(node)
       this.nodeCount++
+      this.refreshCanvas()
     },
     // 画新增的节点
     drawEnterNode (enter) {
@@ -175,7 +191,12 @@ export default {
           // vm.$refs.nodeModal.open()
         })
         .on('mousedown', node => {
+          // 记录鼠标的开始位置
           vm.startP = vm.getXY(window.event)
+          // 记录节点的初始位置
+          vm.originP = {
+            ...node
+          }
           vm.moving = true
           vm.currentNode = node
         })
@@ -185,8 +206,6 @@ export default {
     },
     moveEnd (node) {
       const vm = this
-      node.x = node.x + vm.offsetP.x
-      node.y = node.y + vm.offsetP.x
       vm.moveP = {
         x: 0,
         y: 0

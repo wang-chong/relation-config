@@ -3,45 +3,59 @@
   <el-dialog
     :visible.sync="showModal"
     :title="`关系${modalTitle}`"
-    width="800px"
+    width="1000px"
     id="standardModal">
     <el-form ref="dealForm" :model="dealForm" label-width="100px">
       <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="源表名称" required>
-            <el-select v-model="dealForm.build_rel_tables.table_name1" style="width: 100%;">
-              <el-option v-for="item in tableList" :value="item.name" :key="item.name">{{item.name}}</el-option>
-            </el-select>
+        <el-col :span="18">
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="源表名称" required>
+                <el-select v-model="dealForm.build_rel_tables.table_name1" style="width: 100%;">
+                  <el-option v-for="item in tableList" :value="item" :key="item">{{item}}</el-option>
+                </el-select>
+              </el-form-item>
+              <el-form-item label="源表外键" required>
+                <el-select v-model="dealForm.build_rel_tables.table_col1" style="width: 100%;">
+                  <el-option v-for="item in sourceIdList" :value="item" :key="item">{{item}}</el-option>
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="目标表名称" required>
+                <el-select v-model="dealForm.build_rel_tables.table_name2" style="width: 100%;">
+                  <el-option v-for="item in tableList" :value="item" :key="item">{{item}}</el-option>
+                </el-select>
+              </el-form-item>
+              <el-form-item label="目标表外键" required>
+                <el-select v-model="dealForm.build_rel_tables.table_col2" style="width: 100%;">
+                  <el-option v-for="item in targetIdList" :value="item" :key="item">{{item}}</el-option>
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-form-item label="关系分类" required>
+            <el-input
+              v-model="dealForm.build_rel_tables.relationship"
+              type="text" />
           </el-form-item>
-          <el-form-item label="源表外键" required>
-            <el-select v-model="dealForm.build_rel_tables.table_col1" style="width: 100%;">
-              <el-option v-for="item in idList" :value="item.id" :key="item.id">{{item.id}}</el-option>
-            </el-select>
+          <el-form-item label="关系名称" required>
+            <el-input
+              v-model="relationshipProperty"
+              type="text" />
           </el-form-item>
         </el-col>
-        <el-col :span="12">
-          <el-form-item label="目标表名称" required>
-            <el-select v-model="dealForm.build_rel_tables.table_name2" style="width: 100%;">
-              <el-option v-for="item in tableList" :value="item.name" :key="item.name">{{item.name}}</el-option>
-            </el-select>
-          </el-form-item>
-          <el-form-item label="目标表外键" required>
-            <el-select v-model="dealForm.build_rel_tables.table_col2" style="width: 100%;">
-              <el-option v-for="item in idList" :value="item.id" :key="item.id">{{item.id}}</el-option>
-            </el-select>
-          </el-form-item>
+        <el-col :span="6">
+          <el-card header="已有关系">
+            <el-tag
+              v-for="relation in relations"
+              :key="relation.name"
+              closable>
+              {{relation.name}}
+            </el-tag>
+          </el-card>
         </el-col>
       </el-row>
-      <el-form-item label="关系分类" required>
-        <el-input
-          v-model="dealForm.relationship"
-          type="text" />
-      </el-form-item>
-      <el-form-item label="关系名称" required>
-        <el-input
-          v-model="relationshipProperty"
-          type="text" />
-      </el-form-item>
     </el-form>
     <div slot="footer">
       <el-button class="modalBtn" type="default" @click="showModal = false" size="large">取消</el-button>
@@ -51,7 +65,6 @@
 </template>
 
 <script>
-import { mapActions, mapState } from 'vuex'
 import relationApi from '@/api/relationApi'
 import { handleTypes } from './../constant'
 
@@ -61,13 +74,13 @@ function getDealForm () {
     create: {},
     create_indexes: {},
     build_rel_tables: {
-      table_name1: 'Product',
-      table_name2: 'Category',
-      table_col1: 'categoryID',
-      table_col2: 'categoryID',
+      table_name1: '',
+      table_name2: '',
+      table_col1: '',
+      table_col2: '',
       table_ID1_rel: 'n',
       table_ID2_rel: 'm',
-      relationship: 'relationship',
+      relationship: '',
       relationship_property: {}
     }
   }
@@ -78,90 +91,82 @@ modalTitles[handleTypes.create] = '新增'
 modalTitles[handleTypes.detail] = '详情'
 modalTitles[handleTypes.edit] = '修改'
 
-const tableList = [{
-  name: 'Product'
-}, {
-  name: 'Category'
-}]
-const idList = [{
-  id: 'categoryID'
-}]
-
 export default {
   data () {
     // const vm = this
     return {
       showModal: false,
       handleTypes,
-      tableList,
-      idList,
+      // 所有的表的名称
+      tableList: [],
+      // 源表的所有字段名称
+      sourceIdList: [],
+      // 目标表的所有字段名称
+      targetIdList: [],
       handleType: '',
       relationshipProperty: '',
-      dealForm: getDealForm()
+      dealForm: getDealForm(),
+      relations: [{
+        name: '关系1'
+      }]
     }
   },
   computed: {
     modalTitle () {
       return modalTitles[this.handleType] || '新增'
-    },
-    ...mapState(['dataResourceList'])
-  },
-  mounted () {
-    // this.getDataResourceList()
+    }
   },
   methods: {
+    // 建立两表之间的关系
     async RDBMS_to_Neo4j () {
       const vm = this
-      const property = {
-        name: vm.relationshipProperty
-      }
+      // const property = {
+      // }
       const data = {
-        ...vm.dealForm,
-        relationship_property: JSON.stringify(property)
+        ...vm.dealForm
       }
-      // {
-      //   KeyID: 'c6ed3db8-e2fa-11e8-90e6-005056c00008',
-      //   create: {},
-      //   create_indexes: {},
-      //   build_rel_tables: {
-      //     table_name1: 'Product',
-      //     table_name2: 'Category',
-      //     table_col1: 'categoryID',
-      //     table_col2: 'categoryID',
-      //     table_ID1_rel: 'n',
-      //     table_ID2_rel: 'm',
-      //     relationship: 'relationship',
-      //     relationship_property: JSON.stringify(property)
-      //   }
-      // }
-      // const data = {
-      //   'KeyID': 'c6ed3db8-e2fa-11e8-90e6-005056c00008',
-      //   'create': {},
-      //   'create_indexes': {},
-      //   'build_rel_tables': {
-      //     'table_name1':'Product',
-      //     'table_col1':'supplierID',
-      //     'table_name2':'Supplier',
-      //     'table_col2':'supplierID',
-      //     'table_ID1_rel':'n',
-      //     'relationship':'SUPPLIES',
-      //     'relationship_property':{},
-      //     'table_ID2_rel':'m'
-      //   }
-      // }
+      data.build_rel_tables.relationship_property = `{name: "${vm.relationshipProperty}"}`// JSON.stringify(property)
       const res = await relationApi.RDBMS_to_Neo4j(data)
       console.log(res)
     },
+    // 查询所有的表的list
+    async selectTableList () {
+      const vm = this
+      const data = {
+        find_all_node_labels: 'YES'
+      }
+      const res = await relationApi.select(data)
+      if (res.statusText === 'OK') {
+        vm.tableList = res.data
+        vm.dealForm.build_rel_tables.table_name1 = res.data.length > 0 ? res.data[0] : ''
+        vm.dealForm.build_rel_tables.table_name2 = res.data.length > 0 ? res.data[0] : ''
+      }
+    },
+    // 根据所选的表查询该表所有字段的list
+    async selectIdList (tableName, type) {
+      const vm = this
+      if (!tableName) {
+        vm[`${type}IdList`] = []
+        return
+      }
+      const data = {
+        find_single_label_properties: tableName
+      }
+      const res = await relationApi.select(data)
+      if (res.statusText === 'OK') {
+        if (type) {
+          vm[`${type}IdList`] = res.data
+          if (type === 'source') {
+            vm.dealForm.build_rel_tables.table_col1 = ''
+          } else if (type === 'target') {
+            vm.dealForm.build_rel_tables.table_col2 = ''
+          }
+        }
+      }
+    },
     open (id, type) {
       const vm = this
-      // vm.dealForm = getDealForm()
-      // vm.handleType = type
-      // vm.$refs.dealForm.resetFields()
-      // // 不是新增
-      // if (type !== handleTypes.create) {
-      //   vm.dealForm.id = id
-      //   vm.getDetail()
-      // }
+      vm.selectTableList()
       vm.showModal = true
     },
     async getDetail () {
@@ -210,8 +215,15 @@ export default {
           vm.showModal = false
         }
       }
+    }
+  },
+  watch: {
+    'dealForm.build_rel_tables.table_name1' (val, oldVal) {
+      this.selectIdList(val, 'source')
     },
-    ...mapActions([])
+    'dealForm.build_rel_tables.table_name2' (val, oldVal) {
+      this.selectIdList(val, 'target')
+    }
   }
 }
 </script>

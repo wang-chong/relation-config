@@ -14,19 +14,19 @@
             @mousemove="mousemove"
             @mouseup="mouseup"
             :style="{'transform': `translate3d(${ele.x}, ${ele.y}, 0)`}">
-            <el-button type="primary">按钮</el-button>
+            <el-button type="primary" @click="addNode">添加节点</el-button>
           </div>
         </div>
       </el-col>
       <el-col :span="21">
-        <container></container>
+        <drawArea></drawArea>
       </el-col>
     </el-row>
   </div>
 </template>
 
 <script>
-import container from './container.vue'
+import drawArea from './drawArea.vue'
 
 const eleData = [
   {
@@ -46,7 +46,7 @@ const eleData = [
 
 export default {
   components: {
-    container
+    drawArea
   },
   data () {
     return {
@@ -70,6 +70,10 @@ export default {
     }
   },
   methods: {
+    // 增加节点
+    addNode () {
+      console.log('add node')
+    },
     drag (ev = window.event) {
       ev.dataTransfer.setData('id', ev.target.id)
     },
@@ -77,7 +81,7 @@ export default {
       ev.preventDefault()
     },
     // 放入画布（右侧区域）
-    dropInContainer (ev = window.event) {
+    dropInDrawArea (ev = window.event) {
       const vm = this
       ev = ev || window.event
       ev.preventDefault()
