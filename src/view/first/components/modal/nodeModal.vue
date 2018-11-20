@@ -48,10 +48,12 @@
         <el-col :span="6">
           <el-card header="已有关系">
             <el-tag
-              v-for="relation in relations"
-              :key="relation.name"
-              closable>
-              {{relation.name}}
+              v-for="(relation, idx) in relations"
+              :key="relation.properties.name"
+              closable
+              @close="removeRelation(idx)"
+              style="margin: 10px;">
+              {{relation.properties.name}}
             </el-tag>
           </el-card>
         </el-col>
@@ -106,9 +108,7 @@ export default {
       handleType: '',
       relationshipProperty: '',
       dealForm: getDealForm(),
-      relations: [{
-        name: '关系1'
-      }]
+      relations: []
     }
   },
   computed: {
@@ -117,17 +117,26 @@ export default {
     }
   },
   methods: {
+    open (id, type) {
+      const vm = this
+      vm.selectTableList()
+      vm.getAllRelations()
+      vm.showModal = true
+    },
     // 建立两表之间的关系
     async RDBMS_to_Neo4j () {
       const vm = this
-      // const property = {
-      // }
       const data = {
         ...vm.dealForm
       }
-      data.build_rel_tables.relationship_property = `{name: "${vm.relationshipProperty}"}`// JSON.stringify(property)
+      data.build_rel_tables.relationship_property = `{name: "${vm.relationshipProperty}"}`
       const res = await relationApi.RDBMS_to_Neo4j(data)
-      console.log(res)
+      if (res.statusText === 'OK') {
+        vm.$Message.success('成功新建关系')
+        vm.getAllRelations()
+      } else {
+        vm.$Message.info('新建关系失败，请稍后再试')
+      }
     },
     // 查询所有的表的list
     async selectTableList () {
@@ -164,58 +173,106 @@ export default {
         }
       }
     },
-    open (id, type) {
+    // 获取两表之间的所有关系
+    async getAllRelations () {
       const vm = this
-      vm.selectTableList()
-      vm.showModal = true
-    },
-    async getDetail () {
-      const vm = this
-      vm.showModal = true
-      const res = await relationApi.dataCatalogMetadataDetail({
-        id: vm.dealForm.id
-      })
-      if (res.data && res.data.data) {
-        const data = res.data.data
-        vm.dealForm = data
-      } else {
-        vm.$Message.info(res.data.errmsg)
+      const to = {
+        find_rel_two_table: {
+          start_table_label: 'Product',
+          end_table_label: 'Category'
+        }
+      }
+      // const from = {
+      //   find_rel_two_table: {
+      //     start_table_label: 'Category',
+      //     end_table_label: 'Product'
+      //   }
+      // }
+      // 正向关系
+      const toRelation = relationApi.select(to)
+      // 反向关系（目前没有分方向）
+      // const fromRelation = relationApi.select(from)
+      const toResult = await toRelation
+      // const fromResult = await fromRelation
+      if (toResult.statusText === 'OK') {
+        let arr = []
+        if (toResult.data && toResult.data.length > 0) {
+          arr = toResult.data
+        }
+        vm.relations = arr
       }
     },
-    submit () {
+    // 删除两表之间指定的关系
+    async removeRelation (idx) {
       const vm = this
-      if (vm.handleType === handleTypes.detail) {
-        vm.showModal = false
-        return
-      }
-      vm.$refs.dealForm.validate(valid => {
-        if (valid) {
-          vm.doSave({
-            ...vm.dealForm
-          })
-        } else {
-          vm.$Message.info('表单验证失败')
-        }
+      const remove = await vm.$confirm('确定删除此种关系吗？', {
+        title: '删除提醒',
+        type: 'warning'
       })
-    },
-    async doSave (data) {
-      const vm = this
-      if (vm.handleType === handleTypes.create) {
-        const res = await relationApi.dataCatalogMetadataSave(data)
-        if (res.data) {
-          vm.$Message.success('保存成功！！！')
-          vm.$emit('on-ok')
-          vm.showModal = false
+      if (remove === 'confirm') {
+        const relation = vm.relations[idx]
+        const data = {
+          delete_rel_two_table: {
+            start_table_label: relation.start,
+            end_table_label: relation.end,
+            rel_type: relation.type,
+            rel_property: `{name:'${relation.properties.name}'}`
+          }
         }
-      } else {
-        const res = await relationApi.dataCatalogMetadataUpdate(data)
-        if (res.data) {
-          vm.$Message.success('更新成功！！！')
-          vm.$emit('on-ok')
-          vm.showModal = false
+        const res = await relationApi.deleteRelation(data)
+        if (res.statusText === 'OK') {
+          vm.relations.splice(idx, 1)
+          vm.$Message.info('关系删除成功')
         }
       }
     }
+    // async getDetail () {
+    //   const vm = this
+    //   vm.showModal = true
+    //   const res = await relationApi.dataCatalogMetadataDetail({
+    //     id: vm.dealForm.id
+    //   })
+    //   if (res.data && res.data.data) {
+    //     const data = res.data.data
+    //     vm.dealForm = data
+    //   } else {
+    //     vm.$Message.info(res.data.errmsg)
+    //   }
+    // },
+    // submit () {
+    //   const vm = this
+    //   if (vm.handleType === handleTypes.detail) {
+    //     vm.showModal = false
+    //     return
+    //   }
+    //   vm.$refs.dealForm.validate(valid => {
+    //     if (valid) {
+    //       vm.doSave({
+    //         ...vm.dealForm
+    //       })
+    //     } else {
+    //       vm.$Message.info('表单验证失败')
+    //     }
+    //   })
+    // },
+    // async doSave (data) {
+    //   const vm = this
+    //   if (vm.handleType === handleTypes.create) {
+    //     const res = await relationApi.dataCatalogMetadataSave(data)
+    //     if (res.data) {
+    //       vm.$Message.success('保存成功！！！')
+    //       vm.$emit('on-ok')
+    //       vm.showModal = false
+    //     }
+    //   } else {
+    //     const res = await relationApi.dataCatalogMetadataUpdate(data)
+    //     if (res.data) {
+    //       vm.$Message.success('更新成功！！！')
+    //       vm.$emit('on-ok')
+    //       vm.showModal = false
+    //     }
+    //   }
+    // }
   },
   watch: {
     'dealForm.build_rel_tables.table_name1' (val, oldVal) {

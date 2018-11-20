@@ -41,7 +41,13 @@ export default {
       // 节点计数器
       nodeCount: 0,
       // 当前被操作的节点
-      currentNode: {}
+      currentNode: {},
+      // 右键的时候添加的线条
+      tempLink: [],
+      // 是否正在通过右键添加关系连线
+      isDrawing: false,
+      // 放大缩小的倍数，最小0.5，最大1.5
+      scaleNum: 1
     }
   },
   computed: {
@@ -57,20 +63,6 @@ export default {
     const vm = this
     vm.$nextTick(() => {
       vm.init()
-      vm.addNode({
-        x: 150,
-        y: 100,
-        id: '11'
-      })
-      vm.addNode({
-        x: 300,
-        y: 80,
-        id: '12'
-      })
-      vm.addLink({
-        target: '12',
-        source: '11'
-      })
     })
   },
   methods: {
@@ -84,19 +76,87 @@ export default {
         .attr('height', height)
         .style('cursor', 'move')
         .on('mousemove', node => {
-          vm.moveP = vm.getXY(window.event)
+          vm.moveP = vm.getXY(d3.event)
+          // 拖动节点
           if (vm.moving) {
             const node = vm.currentNode
             node.x = vm.originP.x + vm.offsetP.x
             node.y = vm.originP.y + vm.offsetP.y
             vm.refreshCanvas()
           }
+          // 新增线条
+          if (vm.isDrawing) {
+            vm.tempLink.map(link => {
+              link.targetX = d3.event.layerX
+              link.targetY = d3.event.layerY
+            })
+            vm.drawTempLink()
+          }
         })
+        // 阻止默认的右键事件
+        .on('contextmenu', () => {
+          d3.event.preventDefault()
+        })
+      const ops = vm.svg.append('svg:g')
+        .attr('id', 'ops')
+        // .on('mousewheel', () => {
+        //   // 缩小
+        //   if (d3.event.wheelDelta > 0) {
+        //     vm.scaleNum = vm.scaleNum - 0.05
+        //     if (vm.scaleNum <= 0.5) {
+        //       vm.scaleNum = 0.5
+        //     }
+        //   } else {
+        //     vm.scaleNum = vm.scaleNum + 0.05
+        //     if (vm.scaleNum >= 1.5) {
+        //       vm.scaleNum = 1.5
+        //     }
+        //   }
+        //   ops.attr('transform', `scale(${vm.scaleNum})`)
+        // })
+      vm.initArrows(ops)
+      ops.append('svg:g')
+        .attr('id', 'links')
+      ops.append('svg:g')
+        .attr('id', 'nodes')
       vm.refreshCanvas()
+    },
+    // 初始化箭头
+    initArrows (ops) {
+      ops.append('svg:defs')
+        .append('marker')
+        .attr('id', 'arrow')
+        .attr('viewBox', '0 0 12 12')
+        .attr('markerWidth', '6')
+        .attr('markerHeight', '6')
+        .attr('refX', '6')
+        .attr('refY', '6')
+        .attr('orient', 'auto')
+        .append('path')
+        .attr('d', 'M2,2 L10,6 L2,10 L6,6 L2,2')
+        .attr('class', 'arrow')
     },
     refreshCanvas () {
       const vm = this
-      const allNodes = vm.svg.selectAll('.node')
+
+      const allLinks = vm.svg.select('#links').selectAll('.link')
+      // 获取update部分
+      const updateLink = allLinks.data(links)
+      // 获取enter部分
+      const enterLink = updateLink.enter()
+      // 获取exit部分
+      const exitLink = updateLink.exit()
+      // update部分的处理：更新属性值
+      updateLink.attr('d', l => {
+        const { sourcePoint, targetPoint } = vm.getLinkPoint(l)
+        return `M ${sourcePoint.x} ${sourcePoint.y} L ${targetPoint.x} ${targetPoint.y}`
+      })
+      // enter部分的处理：添加元素后赋予属性值
+      vm.drawEnterLink(enterLink)
+      // 删除的线条
+      exitLink.remove()
+
+      const allNodes = vm.svg.select('#nodes').selectAll('.node')
       // 获取update部分
       const update = allNodes.data(nodes)
       // 获取enter部分
@@ -111,29 +171,13 @@ export default {
       vm.drawEnterNode(enter)
       // 删除的节点
       exit.remove()
-
-      const allLines = vm.svg.selectAll('.link')
-      // 获取update部分
-      const updateLine = allLines.data(links)
-      // 获取enter部分
-      const enterLine = updateLine.enter()
-      // 获取exit部分
-      const exitLine = updateLine.exit()
-      // update部分的处理：更新属性值
-      updateLine.attr('d', l => {
-        const { sourcePoint, targetPoint } = vm.getLinkPoint(l)
-        return `M ${sourcePoint.x} ${sourcePoint.y} L ${targetPoint.x} ${targetPoint.y}`
-      })
-      // enter部分的处理：添加元素后赋予属性值
-      vm.drawEnterLine(enterLine)
-      // 删除的线条
-      exitLine.remove()
     },
     // 画线
-    drawEnterLine (enter) {
+    drawEnterLink (enter) {
       const vm = this
       enter.append('path')
         .attr('class', 'link')
+        .attr('marker-end', 'url(#arrow)')
         .attr('d', l => {
           const { sourcePoint, targetPoint } = vm.getLinkPoint(l)
           return `M ${sourcePoint.x} ${sourcePoint.y} L ${targetPoint.x} ${targetPoint.y}`
@@ -141,6 +185,77 @@ export default {
         .on('click', () => {
           vm.$refs.nodeModal.open()
         })
+    },
+    // 画新增的节点
+    drawEnterNode (enter) {
+      const vm = this
+      const g = enter.append('g')
+        .attr('transform', node => `translate(${node.x}, ${node.y})`)
+        .attr('class', node => `node node_${node.id}`)
+        .attr('id', node => node.id)
+        .on('mousedown', node => {
+          // 左键
+          if (d3.event.button === 0) {
+            // 记录鼠标的开始位置
+            vm.startP = vm.getXY(d3.event)
+            // 记录节点的初始位置
+            vm.originP = {
+              ...node
+            }
+            vm.moving = true
+            vm.currentNode = node
+          }
+        })
+        .on('mouseup', node => {
+          // 右键
+          if (d3.event.button === 2) {
+            if (vm.isDrawing) {
+              vm.isDrawing = false
+              const { source } = vm.tempLink[0]
+              vm.tempLink = []
+              vm.drawTempLink()
+              // 起点和终点不是一张表
+              if (source !== node.id) {
+                vm.addLink({
+                  source: source,
+                  target: node.id
+                })
+                // 防止出现右键信息
+                setTimeout(() => {
+                  vm.$refs.nodeModal.open()
+                }, 100)
+              }
+            } else {
+              vm.tempLink.push({
+                sourceX: node.x,
+                sourceY: node.y,
+                targetX: node.x,
+                targetY: node.y,
+                source: node.id
+              })
+              vm.isDrawing = true
+              vm.drawTempLink()
+            }
+          }
+          vm.moveEnd(node)
+        })
+
+      // 添加方框
+      g.append('rect')
+        .attr('width', '50')
+        .attr('height', '50')
+        .attr('x', '-25')
+        .attr('y', '-25')
+
+      // 添加表名
+      g.append('svg:text')
+        .attr('dx', 0)
+        .attr('dy', '0.4em')
+        .attr('fill', '#fff')
+        .attr('text-anchor', 'middle')
+        .attr('user-select', 'none')
+        .style('font-size', '12px')
+        .html(node => node.name)
     },
     // 根据线的id获取起点和终点的坐标
     getLinkPoint (link) {
@@ -158,6 +273,12 @@ export default {
     },
     // 增加关系连线
     addLink (link) {
+      // 同样的两个节点只能有一条线
+      for (let l of links) {
+        if (l.source === link.source && l.target === link.target) {
+          return
+        }
+      }
       links.push(link)
       this.refreshCanvas()
     },
@@ -169,40 +290,6 @@ export default {
       nodes.push(node)
       this.nodeCount++
       this.refreshCanvas()
-    },
-    // 画新增的节点
-    drawEnterNode (enter) {
-      const vm = this
-      enter.append('g')
-        .attr('transform', node => `translate(${node.x}, ${node.y})`)
-        .attr('class', node => `node node_${node.id}`)
-        .attr('id', node => node.id)
-        .attr('x', '0')
-        .attr('y', '0')
-        .attr('width', '50')
-        .attr('height', '50')
-        .append('rect')
-        .attr('width', '50')
-        .attr('height', '50')
-        .attr('x', '-25')
-        .attr('y', '-25')
-        .on('click', () => {
-          console.log('click')
-          // vm.$refs.nodeModal.open()
-        })
-        .on('mousedown', node => {
-          // 记录鼠标的开始位置
-          vm.startP = vm.getXY(window.event)
-          // 记录节点的初始位置
-          vm.originP = {
-            ...node
-          }
-          vm.moving = true
-          vm.currentNode = node
-        })
-        .on('mouseup', node => {
-          vm.moveEnd(node)
-        })
     },
     moveEnd (node) {
       const vm = this
@@ -216,6 +303,32 @@ export default {
       }
       vm.moving = false
     },
+    // 画等待加入的直线
+    drawTempLink () {
+      const vm = this
+      const tempLink = vm.svg.select('#links').selectAll('.tempLink')
+      // 获取update部分
+      const updateLink = tempLink.data(vm.tempLink)
+      // 获取enter部分
+      const enterLink = updateLink.enter()
+      // 获取exit部分
+      const exitLink = updateLink.exit()
+      // update部分的处理：更新属性值
+      updateLink.attr('d', link => {
+        const { sourceX, sourceY, targetX, targetY } = link
+        return `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`
+      })
+      // enter部分的处理：添加元素后赋予属性值
+      enterLink.append('path')
+        .attr('class', 'tempLink')
+        .attr('marker-end', 'url(#arrow)')
+        .attr('d', link => {
+          const { sourceX, sourceY, targetX, targetY } = link
+          return `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`
+        })
+      // 删除的线条
+      exitLink.remove()
+    },
     // 获取鼠标坐标
     getXY (e) {
       const { clientX, clientY } = e
@@ -226,13 +339,15 @@ export default {
     },
     // 放入画布（右侧区域）
     dropInContainer (ev = window.event) {
-      // const vm = this
-      ev = ev || window.event
+      const vm = this
       ev.preventDefault()
-      const data = ev.dataTransfer.getData('id')
-      // const ele = vm.eleMap.get(data)
-      ev.target.appendChild(document.getElementById(data))
-      // ele.inRelation = true
+      const name = ev.dataTransfer.getData('name')
+      vm.addNode({
+        x: 100,
+        y: 200,
+        name: name,
+        id: nodes.length > 0 ? String(Number(nodes[nodes.length - 1].id) + 1) : '1'
+      })
     },
     allowDrop (ev = window.event) {
       ev.preventDefault()
@@ -259,6 +374,16 @@ path.link{
   fill: none;
   stroke: #000;
   cursor: pointer;
+}
+path.tempLink{
+  stroke-width: 2;
+  fill: none;
+  stroke: #000;
+  cursor: pointer;
+}
+path.arrow{
+  stroke-width: 1;
+  stroke: rgb(0, 0, 0);
 }
 .node rect{
   fill: rgba(0, 105, 237, 0.6);

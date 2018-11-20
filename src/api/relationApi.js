@@ -25,6 +25,21 @@ const apiList = {
       find_muti_relationship: {},
       find_all_node_labels: '',
       find_single_label_properties: '',
+      find_rel_two_table: {},
+      ...data
+    })
+  },
+  deleteRelation (data) {
+    return api({
+      url: '/api/delete',
+      method: 'post'
+    }, {
+      KeyID: '',
+      delete_all: '',
+      delete_node: {},
+      find_node: {},
+      delete_rel: {},
+      delete_rel_two_table: {},
       ...data
     })
   }
