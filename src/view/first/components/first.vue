@@ -3,59 +3,54 @@
     <el-row :gutter="20">
       <el-col :span="3">
         <div class="ele">
+          <div class="ele-title">表名</div>
           <div class="component"
             :id="idx"
             draggable="true"
             @dragstart="drag"
-            v-for="(ele, idx) in eleData"
+            v-for="(ele, idx) in allTables"
             :key="idx">
             <el-tag type="primary">{{ele}}</el-tag>
           </div>
         </div>
       </el-col>
-      <el-col :span="21">
+      <el-col :span="15">
         <drawArea></drawArea>
+      </el-col>
+      <el-col :span="6">
+        <div class="ele">
+          <relation></relation>
+        </div>
       </el-col>
     </el-row>
   </div>
 </template>
 
 <script>
-import relationApi from '@/api/relationApi'
+import { mapState } from 'vuex'
 import drawArea from './drawArea.vue'
+import relation from './relation/relation.vue'
 
 export default {
+  name: 'first',
   components: {
-    drawArea
+    drawArea,
+    relation
   },
   data () {
     return {
-      eleData: [],
-      currentEleInfo: null
+      currentRelationIdx: 0
     }
   },
   computed: {
-    userName () {
-      return this.$store.state.name
-    }
+    ...mapState(['allTables', 'allRelations'])
   },
   mounted () {
-    this.selectTableList()
+    this.$store.dispatch('SELECT_ALL_TABLES')
   },
   methods: {
-    // 查询所有的表的list
-    async selectTableList () {
-      const vm = this
-      const data = {
-        find_all_node_labels: 'YES'
-      }
-      const res = await relationApi.select(data)
-      if (res.statusText === 'OK') {
-        vm.eleData = res.data
-      }
-    },
     drag (ev = window.event) {
-      ev.dataTransfer.setData('name', this.eleData[ev.target.id])
+      ev.dataTransfer.setData('name', this.allTables[ev.target.id])
     },
     allowDrop (ev = window.event) {
       ev.preventDefault()
@@ -64,16 +59,17 @@ export default {
 }
 </script>
 
-<style lang="less" scoped>
-#button{
-  position: absolute;
-}
+<style lang="less">
 .ele{
-  // position: relative;
-  height: 300px;
-  padding: 15px;
+  height: 500px;
+  padding: 0 5px;
   box-sizing: border-box;
   border: 1px solid rgba(0, 0, 0, 0.1);
+  .ele-title{
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    padding: 10px 0px;
+    text-align: center;
+  }
   .component{
     cursor: move;
     margin: 15px;

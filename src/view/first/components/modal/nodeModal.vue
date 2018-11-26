@@ -2,7 +2,7 @@
 <template>
   <el-dialog
     :visible.sync="showModal"
-    :title="`关系${modalTitle}`"
+    title="关系新增"
     width="1000px"
     id="standardModal">
     <el-form ref="dealForm" :model="dealForm" label-width="100px">
@@ -12,7 +12,7 @@
             <el-col :span="12">
               <el-form-item label="源表名称" required>
                 <el-select v-model="dealForm.build_rel_tables.table_name1" style="width: 100%;">
-                  <el-option v-for="item in tableList" :value="item" :key="item">{{item}}</el-option>
+                  <el-option v-for="item in tableList" :value="item.name" :key="item.id">{{item.name}}</el-option>
                 </el-select>
               </el-form-item>
               <el-form-item label="源表外键" required>
@@ -24,7 +24,7 @@
             <el-col :span="12">
               <el-form-item label="目标表名称" required>
                 <el-select v-model="dealForm.build_rel_tables.table_name2" style="width: 100%;">
-                  <el-option v-for="item in tableList" :value="item" :key="item">{{item}}</el-option>
+                  <el-option v-for="item in tableList" :value="item.name" :key="item.id">{{item.name}}</el-option>
                 </el-select>
               </el-form-item>
               <el-form-item label="目标表外键" required>
@@ -48,27 +48,27 @@
         <el-col :span="6">
           <el-card header="已有关系">
             <el-tag
-              v-for="(relation, idx) in relations"
-              :key="relation.properties.name"
+              v-for="(r, idx) in allRelations"
+              :key="r.properties.name"
               closable
               @close="removeRelation(idx)"
               style="margin: 10px;">
-              {{relation.properties.name}}
+              {{r.properties.name}}({{r.type}})
             </el-tag>
           </el-card>
         </el-col>
       </el-row>
     </el-form>
-    <div slot="footer">
-      <el-button class="modalBtn" type="default" @click="showModal = false" size="large">取消</el-button>
-      <el-button class="modalBtn" type="primary" @click="RDBMS_to_Neo4j" size="large">确定</el-button>
+    <div slot="footer" style="text-align: center;">
+      <el-button class="modalBtn" type="default" @click="showModal = false" size="large">关闭</el-button>
+      <el-button class="modalBtn" type="primary" @click="RDBMS_to_Neo4j" size="large">新增</el-button>
     </div>
   </el-dialog>
 </template>
 
 <script>
 import relationApi from '@/api/relationApi'
-import { handleTypes } from './../constant'
+import { mapState } from 'vuex'
 
 function getDealForm () {
   return {
@@ -88,17 +88,22 @@ function getDealForm () {
   }
 }
 
-const modalTitles = {}
-modalTitles[handleTypes.create] = '新增'
-modalTitles[handleTypes.detail] = '详情'
-modalTitles[handleTypes.edit] = '修改'
-
 export default {
+  name: 'nodeModal',
+  props: {
+    // 所有节点的信息
+    nodes: {
+      type: Array,
+      required: true,
+      default () {
+        return []
+      }
+    }
+  },
   data () {
     // const vm = this
     return {
       showModal: false,
-      handleTypes,
       // 所有的表的名称
       tableList: [],
       // 源表的所有字段名称
@@ -108,20 +113,35 @@ export default {
       handleType: '',
       relationshipProperty: '',
       dealForm: getDealForm(),
-      relations: []
+      // 当前箭头的源
+      source: null,
+      // 当前箭头的目标
+      target: null
     }
   },
   computed: {
-    modalTitle () {
-      return modalTitles[this.handleType] || '新增'
-    }
+    ...mapState(['allRelations'])
   },
   methods: {
-    open (id, type) {
+    initForm () {
+      this.relationshipProperty = ''
+      this.dealForm.build_rel_tables.table_col1 = ''
+      this.dealForm.build_rel_tables.table_col2 = ''
+      this.dealForm.build_rel_tables.relationship = ''
+    },
+    open (link) {
       const vm = this
-      vm.selectTableList()
-      vm.getAllRelations()
-      vm.showModal = true
+      vm.initForm()
+      vm.source = vm.nodes.find(item => item.id === link.source)
+      vm.target = vm.nodes.find(item => item.id === link.target)
+      if (vm.source && vm.target) {
+        // 初始化表的select选项
+        vm.tableList = [vm.source, vm.target]
+        vm.dealForm.build_rel_tables.table_name1 = vm.source.name
+        vm.dealForm.build_rel_tables.table_name2 = vm.target.name
+        vm.showModal = true
+        vm.getAllRelations()
+      }
     },
     // 建立两表之间的关系
     async RDBMS_to_Neo4j () {
@@ -133,22 +153,10 @@ export default {
       const res = await relationApi.RDBMS_to_Neo4j(data)
       if (res.statusText === 'OK') {
         vm.$Message.success('成功新建关系')
+        vm.initForm()
         vm.getAllRelations()
       } else {
         vm.$Message.info('新建关系失败，请稍后再试')
-      }
-    },
-    // 查询所有的表的list
-    async selectTableList () {
-      const vm = this
-      const data = {
-        find_all_node_labels: 'YES'
-      }
-      const res = await relationApi.select(data)
-      if (res.statusText === 'OK') {
-        vm.tableList = res.data
-        vm.dealForm.build_rel_tables.table_name1 = res.data.length > 0 ? res.data[0] : ''
-        vm.dealForm.build_rel_tables.table_name2 = res.data.length > 0 ? res.data[0] : ''
       }
     },
     // 根据所选的表查询该表所有字段的list
@@ -176,31 +184,10 @@ export default {
     // 获取两表之间的所有关系
     async getAllRelations () {
       const vm = this
-      const to = {
-        find_rel_two_table: {
-          start_table_label: 'Product',
-          end_table_label: 'Category'
-        }
-      }
-      // const from = {
-      //   find_rel_two_table: {
-      //     start_table_label: 'Category',
-      //     end_table_label: 'Product'
-      //   }
-      // }
-      // 正向关系
-      const toRelation = relationApi.select(to)
-      // 反向关系（目前没有分方向）
-      // const fromRelation = relationApi.select(from)
-      const toResult = await toRelation
-      // const fromResult = await fromRelation
-      if (toResult.statusText === 'OK') {
-        let arr = []
-        if (toResult.data && toResult.data.length > 0) {
-          arr = toResult.data
-        }
-        vm.relations = arr
-      }
+      vm.$store.dispatch('SELECT_ALL_RELATIONS', {
+        source: vm.source,
+        target: vm.target
+      })
     },
     // 删除两表之间指定的关系
     async removeRelation (idx) {
@@ -210,7 +197,7 @@ export default {
         type: 'warning'
       })
       if (remove === 'confirm') {
-        const relation = vm.relations[idx]
+        const relation = vm.allRelations[idx]
         const data = {
           delete_rel_two_table: {
             start_table_label: relation.start,
@@ -221,7 +208,7 @@ export default {
         }
         const res = await relationApi.deleteRelation(data)
         if (res.statusText === 'OK') {
-          vm.relations.splice(idx, 1)
+          vm.allRelations.splice(idx, 1)
           vm.$Message.info('关系删除成功')
         }
       }

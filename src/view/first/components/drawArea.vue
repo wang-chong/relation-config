@@ -3,12 +3,13 @@
     <div ref="container" id='container' @drop='dropInContainer' @dragover='allowDrop'>
       <svg ref='paper'></svg>
     </div>
-    <nodeModal ref="nodeModal"></nodeModal>
+    <nodeModal ref="nodeModal" :nodes="nodes"></nodeModal>
   </div>
 </template>
 <script>
 import * as d3 from 'd3'
 import nodeModal from './modal/nodeModal.vue'
+import Bus from './../assets/js/Bus'
 
 const nodes = []
 const links = []
@@ -20,6 +21,10 @@ export default {
   name: 'container',
   data () {
     return {
+      // 所有的节点，也就是所有的表
+      nodes,
+      // 所有的连线
+      links,
       // svg的容器
       container: null,
       // d3选择的画布
@@ -99,7 +104,7 @@ export default {
         })
       const ops = vm.svg.append('svg:g')
         .attr('id', 'ops')
-        // .on('mousewheel', () => {
+        // .on('mousewheel', () => { // 放大缩小画布
         //   // 缩小
         //   if (d3.event.wheelDelta > 0) {
         //     vm.scaleNum = vm.scaleNum - 0.05
@@ -123,8 +128,8 @@ export default {
     },
     // 初始化箭头
     initArrows (ops) {
-      ops.append('svg:defs')
-        .append('marker')
+      const defs = ops.append('svg:defs')
+      defs.append('marker')
         .attr('id', 'arrow')
         .attr('viewBox', '0 0 12 12')
         .attr('markerWidth', '6')
@@ -135,6 +140,17 @@ export default {
         .append('path')
         .attr('d', 'M2,2 L10,6 L2,10 L6,6 L2,2')
         .attr('class', 'arrow')
+      defs.append('marker')
+        .attr('id', 'arrowActive')
+        .attr('viewBox', '0 0 12 12')
+        .attr('markerWidth', '6')
+        .attr('markerHeight', '6')
+        .attr('refX', '6')
+        .attr('refY', '6')
+        .attr('orient', 'auto')
+        .append('path')
+        .attr('d', 'M2,2 L10,6 L2,10 L6,6 L2,2')
+        .attr('class', 'arrow-active')
     },
     refreshCanvas () {
       const vm = this
@@ -151,6 +167,8 @@ export default {
         const { sourcePoint, targetPoint } = vm.getLinkPoint(l)
         return `M ${sourcePoint.x} ${sourcePoint.y} L ${targetPoint.x} ${targetPoint.y}`
       })
+        .attr('class', l => `link ${l.active ? 'active' : ''}`)
+        .attr('marker-end', l => `url(#arrow${l.active ? 'Active' : ''})`)
       // enter部分的处理：添加元素后赋予属性值
       vm.drawEnterLink(enterLink)
       // 删除的线条
@@ -176,15 +194,30 @@ export default {
     drawEnterLink (enter) {
       const vm = this
       enter.append('path')
-        .attr('class', 'link')
-        .attr('marker-end', 'url(#arrow)')
+        .attr('class', l => `link ${l.active ? 'active' : ''}`)
+        .attr('marker-end', l => `url(#arrow${l.active ? 'Active' : ''})`)
         .attr('d', l => {
           const { sourcePoint, targetPoint } = vm.getLinkPoint(l)
           return `M ${sourcePoint.x} ${sourcePoint.y} L ${targetPoint.x} ${targetPoint.y}`
         })
-        .on('click', () => {
-          vm.$refs.nodeModal.open()
+        .on('click', l => {
+          vm.changeActiveLink(l)
+          Bus.$emit('linkChange', {
+            link: l,
+            nodes
+          })
         })
+        .on('dblclick', l => {
+          d3.event.preventDefault()
+          vm.$refs.nodeModal.open(l)
+        })
+    },
+    changeActiveLink (l) {
+      const vm = this
+      const activeLink = vm.links.find(link => link.active)
+      activeLink.active = false
+      l.active = true
+      vm.refreshCanvas()
     },
     // 画新增的节点
     drawEnterNode (enter) {
@@ -216,13 +249,15 @@ export default {
               vm.drawTempLink()
               // 起点和终点不是一张表
               if (source !== node.id) {
-                vm.addLink({
+                const linkInfo = {
                   source: source,
-                  target: node.id
-                })
+                  target: node.id,
+                  active: true
+                }
+                vm.addLink(linkInfo)
                 // 防止出现右键信息
                 setTimeout(() => {
-                  vm.$refs.nodeModal.open()
+                  vm.$refs.nodeModal.open(linkInfo)
                 }, 100)
               }
             } else {
@@ -239,6 +274,9 @@ export default {
           }
           vm.moveEnd(node)
         })
+        .on('click', node => {
+          console.log('click')
+        })
 
       // 添加方框
       g.append('rect')
@@ -251,10 +289,8 @@ export default {
       g.append('svg:text')
         .attr('dx', 0)
         .attr('dy', '0.4em')
-        .attr('fill', '#fff')
         .attr('text-anchor', 'middle')
-        .attr('user-select', 'none')
-        .style('font-size', '12px')
+        .attr('class', 'text')
         .html(node => node.name)
     },
     // 根据线的id获取起点和终点的坐标
@@ -273,14 +309,16 @@ export default {
     },
     // 增加关系连线
     addLink (link) {
+      const vm = this
       // 同样的两个节点只能有一条线
       for (let l of links) {
         if (l.source === link.source && l.target === link.target) {
+          vm.changeActiveLink(l)
           return
         }
       }
       links.push(link)
-      this.refreshCanvas()
+      vm.changeActiveLink(link)
     },
     // 增加节点
     addNode (node) {
@@ -321,7 +359,7 @@ export default {
       // enter部分的处理：添加元素后赋予属性值
       enterLink.append('path')
         .attr('class', 'tempLink')
-        .attr('marker-end', 'url(#arrow)')
+        .attr('marker-end', 'url(#arrowActive)')
         .attr('d', link => {
           const { sourceX, sourceY, targetX, targetY } = link
           return `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`
@@ -359,31 +397,43 @@ export default {
 <style lang='less' scoped>
 #container{
   position: relative;
-  height: 300px;
+  height: 500px;
   width: 100%;
   background-color: rgba(0, 0, 0, 0.3);
-  .component{
-    position: absolute;
-  }
 }
 </style>
 
 <style lang="less">
+@activeColor: #4786D5;
 path.link{
   stroke-width: 2;
   fill: none;
   stroke: #000;
   cursor: pointer;
+  transition: stroke 0.5s;
+  &.active{
+    stroke-width: 3;
+    stroke: @activeColor;
+  }
 }
 path.tempLink{
   stroke-width: 2;
   fill: none;
-  stroke: #000;
-  cursor: pointer;
+  stroke: @activeColor;
 }
 path.arrow{
   stroke-width: 1;
-  stroke: rgb(0, 0, 0);
+  stroke: #000;
+}
+path.arrow-active{
+  stroke-width: 1;
+  fill: @activeColor;
+  stroke: @activeColor;
+}
+text.text{
+  fill: #fff;
+  user-select: none;
+  font-size: 12px;
 }
 .node rect{
   fill: rgba(0, 105, 237, 0.6);
