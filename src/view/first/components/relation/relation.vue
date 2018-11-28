@@ -4,7 +4,7 @@
       <div class="ele-title">关系</div>
     </slot>
     <template v-if="allRelations.length > 0">
-      <div class="relation-container">
+      <div class="ele-container">
         <div class="component" @click="changeTag(idx)" v-for="(r, idx) in allRelations" :key="idx">
           <el-tag
             :type="currentRelationIdx === idx ? '' : 'info'">
@@ -95,8 +95,11 @@ export default {
 </script>
 
 <style lang="less" scoped>
-.relation-container{
+.ele-container{
+  max-height: 157px;
+  height: auto;
   border-bottom: 1px solid rgba(0, 0, 0, .1);
+  overflow: auto;
   .component{
     cursor: pointer;
     display: inline-block;

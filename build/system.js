@@ -11,7 +11,7 @@ module.exports = {
   // 配置代理，便于本地开发过程中可以连到任意的地址进行调试，可以按照规则配置多个代理地址
   proxyTable: {
     '/api': { // ajax请求http://localhost:8080/api/123会被代理到http://139.159.241.21:10086
-      target: 'http://192.168.1.29:10001', // 余一德
+      target: 'http://192.168.30.157:10001', // 余一德
       changeOrigin: true, //改变源
       pathRewrite: {
         '^/api': '/api' //路径重写

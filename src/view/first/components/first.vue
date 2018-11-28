@@ -1,16 +1,18 @@
 <template>
   <div id="first">
-    <el-row :gutter="20">
+    <el-row :gutter="20" style="margin: 0;">
       <el-col :span="3">
         <div class="ele">
-          <div class="ele-title">表名</div>
-          <div class="component"
-            :id="idx"
-            draggable="true"
-            @dragstart="drag"
-            v-for="(ele, idx) in allTables"
-            :key="idx">
-            <el-tag type="primary">{{ele}}</el-tag>
+          <div class="ele-title">节点</div>
+          <div class="ele-container">
+            <div class="component"
+              :id="idx"
+              draggable="true"
+              @dragstart="drag"
+              v-for="(ele, idx) in allTables"
+              :key="idx">
+              <el-tag type="primary">{{ele}}</el-tag>
+            </div>
           </div>
         </div>
       </el-col>
@@ -23,19 +25,24 @@
         </div>
       </el-col>
     </el-row>
+    <div class="table-container">
+      <tableData></tableData>
+    </div>
   </div>
 </template>
 
 <script>
 import { mapState } from 'vuex'
-import drawArea from './drawArea.vue'
+import drawArea from './drawarea/drawArea.vue'
 import relation from './relation/relation.vue'
+import tableData from './table/tableData.vue'
 
 export default {
   name: 'first',
   components: {
     drawArea,
-    relation
+    relation,
+    tableData
   },
   data () {
     return {
@@ -50,14 +57,18 @@ export default {
   },
   methods: {
     drag (ev = window.event) {
-      ev.dataTransfer.setData('name', this.allTables[ev.target.id])
-    },
-    allowDrop (ev = window.event) {
-      ev.preventDefault()
+      ev.dataTransfer.setData('Text', this.allTables[ev.target.id])
     }
   }
 }
 </script>
+
+<style lang="less" scoped>
+.table-container{
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  margin: 10px;
+}
+</style>
 
 <style lang="less">
 .ele{
@@ -70,9 +81,14 @@ export default {
     padding: 10px 0px;
     text-align: center;
   }
-  .component{
-    cursor: move;
-    margin: 15px;
+  .ele-container{
+    height: 458px;
+    overflow: auto;
+    .component{
+      cursor: move;
+      margin: 10px;
+      display: inline-block;
+    }
   }
 }
 </style>

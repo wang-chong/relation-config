@@ -1,13 +1,13 @@
 <!-- 新增详情等的弹窗 -->
 <template>
   <el-dialog
-    :visible.sync="showModal"
+    :visible.sync="showDialog"
     title="关系新增"
     width="1000px"
     id="standardModal">
-    <el-form ref="dealForm" :model="dealForm" label-width="100px">
+    <el-form ref="dealForm" :rules="rules" :model="dealForm" label-width="100px">
       <el-row :gutter="20">
-        <el-col :span="18">
+        <el-col :span="16">
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="源表名称" required>
@@ -45,14 +45,18 @@
               type="text" />
           </el-form-item>
         </el-col>
-        <el-col :span="6">
-          <el-card header="已有关系">
+        <el-col :span="8">
+          <el-card>
+            <div slot="header" class="clearfix">
+              <span>已有关系</span>
+              <el-button type="danger" size="mini" style="float: right;" @click="removeRelations">删除</el-button>
+            </div>
             <el-tag
               v-for="(r, idx) in allRelations"
               :key="r.properties.name"
               closable
               @close="removeRelation(idx)"
-              style="margin: 10px;">
+              style="margin: 10px 3px;">
               {{r.properties.name}}({{r.type}})
             </el-tag>
           </el-card>
@@ -60,7 +64,7 @@
       </el-row>
     </el-form>
     <div slot="footer" style="text-align: center;">
-      <el-button class="modalBtn" type="default" @click="showModal = false" size="large">关闭</el-button>
+      <el-button class="modalBtn" type="default" @click="showDialog = false" size="large">关闭</el-button>
       <el-button class="modalBtn" type="primary" @click="RDBMS_to_Neo4j" size="large">新增</el-button>
     </div>
   </el-dialog>
@@ -69,6 +73,7 @@
 <script>
 import relationApi from '@/api/relationApi'
 import { mapState } from 'vuex'
+import Bus from './../../assets/js/Bus'
 
 function getDealForm () {
   return {
@@ -103,7 +108,7 @@ export default {
   data () {
     // const vm = this
     return {
-      showModal: false,
+      showDialog: false,
       // 所有的表的名称
       tableList: [],
       // 源表的所有字段名称
@@ -116,7 +121,27 @@ export default {
       // 当前箭头的源
       source: null,
       // 当前箭头的目标
-      target: null
+      target: null,
+      rules: {
+        table_name1: [
+          { required: true, message: '请选择源表', trigger: 'blur' }
+        ],
+        table_col1: [
+          { required: true, message: '请选择目标表', trigger: 'change' }
+        ],
+        table_name2: [
+          { required: true, message: '请选择源表外键', trigger: 'change' }
+        ],
+        table_col2: [
+          { required: true, message: '请选择目标表外键', trigger: 'change' }
+        ],
+        relationship: [
+          { required: true, message: '请填写关系分类', trigger: 'change' }
+        ],
+        relationshipProperty: [
+          { required: true, message: '请填写关系名称', trigger: 'change' }
+        ]
+      }
     }
   },
   computed: {
@@ -128,10 +153,10 @@ export default {
       this.dealForm.build_rel_tables.table_col1 = ''
       this.dealForm.build_rel_tables.table_col2 = ''
       this.dealForm.build_rel_tables.relationship = ''
+      this.$refs.dealForm.clearValidate()
     },
     open (link) {
       const vm = this
-      vm.initForm()
       vm.source = vm.nodes.find(item => item.id === link.source)
       vm.target = vm.nodes.find(item => item.id === link.target)
       if (vm.source && vm.target) {
@@ -139,9 +164,23 @@ export default {
         vm.tableList = [vm.source, vm.target]
         vm.dealForm.build_rel_tables.table_name1 = vm.source.name
         vm.dealForm.build_rel_tables.table_name2 = vm.target.name
-        vm.showModal = true
+        vm.showDialog = true
+        vm.$nextTick(() => {
+          vm.initForm()
+        })
         vm.getAllRelations()
       }
+    },
+    // 新增关系
+    createRelation () {
+      const vm = this
+      vm.$refs.dealForm.validate(valid => {
+        if (valid) {
+          vm.RDBMS_to_Neo4j()
+        } else {
+          vm.$Message.warn('表单验证失败！')
+        }
+      })
     },
     // 建立两表之间的关系
     async RDBMS_to_Neo4j () {
@@ -212,54 +251,34 @@ export default {
           vm.$Message.info('关系删除成功')
         }
       }
+    },
+    // 删除两表之间所有的关系
+    async removeRelations () {
+      const vm = this
+      if (vm.allRelations.length > 0) {
+        const remove = await vm.$confirm('确定删除所有关系吗？', {
+          title: '删除提醒',
+          type: 'warning'
+        })
+        if (remove === 'confirm') {
+          const relation = vm.allRelations[0]
+          const data = {
+            delete_rel_two_table: {
+              start_table_label: relation.start,
+              end_table_label: relation.end,
+              rel_type: '',
+              rel_property: '',
+              delete_all: 'yes'
+            }
+          }
+          const res = await relationApi.deleteRelation(data)
+          if (res.statusText === 'OK') {
+            vm.$store.commit('SET_ALL_RELATIONS', [])
+            vm.$Message.info('所有关系删除成功')
+          }
+        }
+      }
     }
-    // async getDetail () {
-    //   const vm = this
-    //   vm.showModal = true
-    //   const res = await relationApi.dataCatalogMetadataDetail({
-    //     id: vm.dealForm.id
-    //   })
-    //   if (res.data && res.data.data) {
-    //     const data = res.data.data
-    //     vm.dealForm = data
-    //   } else {
-    //     vm.$Message.info(res.data.errmsg)
-    //   }
-    // },
-    // submit () {
-    //   const vm = this
-    //   if (vm.handleType === handleTypes.detail) {
-    //     vm.showModal = false
-    //     return
-    //   }
-    //   vm.$refs.dealForm.validate(valid => {
-    //     if (valid) {
-    //       vm.doSave({
-    //         ...vm.dealForm
-    //       })
-    //     } else {
-    //       vm.$Message.info('表单验证失败')
-    //     }
-    //   })
-    // },
-    // async doSave (data) {
-    //   const vm = this
-    //   if (vm.handleType === handleTypes.create) {
-    //     const res = await relationApi.dataCatalogMetadataSave(data)
-    //     if (res.data) {
-    //       vm.$Message.success('保存成功！！！')
-    //       vm.$emit('on-ok')
-    //       vm.showModal = false
-    //     }
-    //   } else {
-    //     const res = await relationApi.dataCatalogMetadataUpdate(data)
-    //     if (res.data) {
-    //       vm.$Message.success('更新成功！！！')
-    //       vm.$emit('on-ok')
-    //       vm.showModal = false
-    //     }
-    //   }
-    // }
   },
   watch: {
     'dealForm.build_rel_tables.table_name1' (val, oldVal) {
@@ -267,6 +286,18 @@ export default {
     },
     'dealForm.build_rel_tables.table_name2' (val, oldVal) {
       this.selectIdList(val, 'target')
+    },
+    // 关系全部删除后，删除画布里面的线条，关闭对话框的时候触发
+    showDialog (val) {
+      // 关闭的时候
+      if (!val) {
+        if (this.allRelations.length === 0) {
+          Bus.$emit('removeLink', {
+            source: this.source.id,
+            target: this.target.id
+          })
+        }
+      }
     }
   }
 }
